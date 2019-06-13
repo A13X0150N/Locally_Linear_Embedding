@@ -5,7 +5,9 @@ import numpy as np
 import scipy as sp
 from sklearn import manifold
 from sklearn import neighbors
+from sklearn import datasets
 import struct
+import sys
 
 # Parse data from zipped mnist files into numpy arrays
 # Modified from source: https://gist.github.com/tylerneylon/ce60e8a06e7506ac45788443f7269e40
@@ -38,62 +40,98 @@ def find_landmarks(Y, n, m):
     return idx
 
 
-# Construct a weighted matrix that recreates X from its nearest neighbors
+# Inputs: x --> the basis vector (784 x 1)
+#         E --> eta is the matrix of nearest neighbors (k x 784)
+# 
+# Outputs: C --> the covariance matrix of the nearest neighbors of the vector x 
 #
-# Inputs: X    --> Input matrix
-#         tree --> nearest neighbors tree
-#         k    --> number of nearest neighbors  
-#         W    --> the weight matrix
-# Reconstruction errors measured by the cost function of the distances of every Xj for an Xi with weights applied to Xj
+# Iterate theough the nearest neighbors and compute the  
+#
+def calc_covariance(x, Eta):
+    print("Calculate covariance:")
+    print("x: ", np.shape(x))
+    print("E: ", np.shape(Eta))
+
+    K = np.shape(Eta)[0]      # set K to iterate through each of the nearest neighbors
+    C = np.zeros([K,K])     # set C as the KxK covariance matrix
+    print("K: ", K)
+    
+    #Et = Eta.T
+    #print("E[1]: \n", E[1], "\n")
+    # center the data
+    for k in range(0, K-1):
+        Eta[k] = x - Eta[k]
+    
+    np.set_printoptions(threshold=sys.maxsize)
+    print(Eta)
+    print("Eta")
+    
+    print(Eta.T)
+    print("Eta.T")
+    
+    # Compute the local covariance matrix
+    C = np.cov(Eta)
+
+    print("Local covariance matrix C: ", np.shape(C))
+    print(C, "\n")
+
+    return C
+
+
+# Determine the reconstruction weights for each X
+#
+# Inputs:  X    --> Data Matrix
+#          v    --> Index into the data matrix for the vector we want to construct weights for
+#          tree --> nearest neighbors tree
+#          k    --> number of nearest neighbors  
+# 
+# Outputs: W    --> the weight matrix
+#
+# Reconstruction errors measured by the cost function of the distances of every
+# Xj for an Xi with weights applied to Xj
 # Minimize the const function subject to two constraints:
-# 1. Each data point Xi is reconstructed from its nearest neighbors only --> Wij = 0 if X Xj not in the set of nearest neighbors
+# 1. Each data point Xi is reconstructed from its nearest neighbors only 
+#    --> Wij = 0 if X Xj not in the set of nearest neighbors
 # 2. Rows of the weight matrix sum to one
 #
-def construct_weight_matrix(X, tree, k):
+def construct_weight_matrix(X, v, neighbors, k):
     # Setup matrices and variables
-    D = np.shape(X)[0]             # get the dimension of X
-    print("X: ", np.shape(X))
-    print("D: ", D)
+    D = np.shape(X)[1]                              # get the dimension of X
+    print("Construct weight matrix")
+    print("X = ", np.shape(X))
+    print("D = ", D)
+    print("k = ", k)
+    print("Image #", v, "(v)")
+    print("Neighbors = ", neighbors)
 
     # Build a matrix of the K nearest neighbors
-    dist, ind = tree.query(X[:1], k=n_neighbors)
+    n = neighbors[:,0]      # Set eta to the first nearest neighbor vector
+    Eta = X[n]
+    print("Eta: ", np.shape(Eta))
+    
+    # iterate through the rest of neighbors and concatenate them into Eta
+    for i in range(1,k):      
+        n = neighbors[:,i]
+        Eta = np.row_stack((Eta, X[n]))
+        print(np.shape(Eta))
+    
+    # Compute local covariance matrix for the vector v in X
+    # and the Eta nearest neighbors
+    C = calc_covariance(X[v,:], Eta)
 
-    E = np.zeros(D, k)      # empty array for nearest neighbors
-    for i in range(k):      # iterate through tree indices and get nearest neighbors
-        E[i] = ind[i]
-
-
-    # Compute local covariance matrix
-    C = calc_covariance(Xi, E)
-
-    # Solve linear system with constraint that rows of weights sum to one
-    b = np.ones(np.shape(C)[1])  # build solution matrix from dimension of C
-    Y =np.linalg.solve(C, b)
+    # Solve the linear system with constraint that rows of weights sum to one
+    b = np.ones(np.shape(C)[1])  # build the constant vector
+    W = np.linalg.solve(C, b)    # compute solution
+    
+    print("W: ", np.shape(W))
+    print(W)
     
     # Apply second constraint if j is not a neighbor, set Wij = 0
-    for j in range(np.shape(C)[0]):
-        if ()
+    #for i in range(0, np.shape(X)[0]):
+        
 
     return W
 
-
-# X --> the basis vector
-# E --> eta is the matrix of nearest neighbors
-# iterate theough the nearest neighbors and compute the  
-def calc_covariance(X, E):
-    K = np.shape(E)[1]      # set K to iterate through each of the nearest neighbors
-    C = np.zeros([K,K])     # set C as the KxK covariance matrix
-    # center the data
-    for k in range(K):
-        E[k] = X - E[k]
-
-    # Compute the local covariance matrix
-    C = np.cov(E)
-
-    print("Local covariance matrix for X: ", X)
-    print(C)
-
-    return C
 
 
 
@@ -116,9 +154,15 @@ def locally_linear_embedding(X, n_neighbors, n_components):
     # (nearest neighbors are ranked in order)
     # dist = distance k=n_neighbors nearest neighbors
 
-    # Step 2: Construct a weighted matrix that recreates X from its neighbors
-    W = construct_weight_matrix(X, tree, n_neighbors)
-
+    # Step 2: Construct a weight matrix that recreates X from its neighbors
+    # Loop through each image and construct its weight matrix 
+    W = np.zeros(np.shape(X))
+    #for v in range(0, np.shape(X)[0] - 1)
+    
+    
+    v = 1
+    dist, ind = tree.query(X[:v], k=n_neighbors)
+    W = construct_weight_matrix(X, v, ind, n_neighbors)
 
 
     
@@ -131,7 +175,7 @@ def locally_linear_embedding(X, n_neighbors, n_components):
 
 
 
-# Extract mnist data from files
+
 raw_train = read_idx("train-images-idx3-ubyte.gz")
 train_data = np.reshape(raw_train, (60000, 28*28))
 train_label = read_idx("train-labels-idx1-ubyte.gz")
@@ -143,16 +187,16 @@ Y, err = locally_linear_embedding(X, n_neighbors=10, n_components=2)
 landmarks = find_landmarks(Y, 5, 5)
 
 # Plot the clustered data with landmarks overlaid
-#plt.scatter(Y[:,0], Y[:,1])
-#plt.scatter(Y[landmarks,0], Y[landmarks,1])
+plt.scatter(Y[:,0], Y[:,1])
+plt.scatter(Y[landmarks,0], Y[landmarks,1])
 
 # Show the landmark samples in a 5x5 grid
-#fig = plt.figure(figsize=(15,15))
-#for i in range(len(landmarks)):
-#    ax = fig.add_subplot(5, 5, i+1)
-#    imgplot = ax.imshow(np.reshape(X[landmarks[i]], (28,28)), cmap=plt.cm.get_cmap("Greys"))
-#    imgplot.set_interpolation("nearest")
-#plt.show()
+fig = plt.figure(figsize=(15,15))
+for i in range(len(landmarks)):
+    ax = fig.add_subplot(5, 5, i+1)
+    imgplot = ax.imshow(np.reshape(X[landmarks[i]], (28,28)), cmap=plt.cm.get_cmap("Greys"))
+    imgplot.set_interpolation("nearest")
+plt.show()
 
 
 
