@@ -2,6 +2,7 @@ import gzip
 import matplotlib.pyplot as plt
 #matplotlib inline
 import numpy as np
+import numpy.ma as ma
 import scipy as sp
 from sklearn import manifold
 from sklearn import neighbors
@@ -47,35 +48,80 @@ def find_landmarks(Y, n, m):
 #
 # Iterate theough the nearest neighbors and compute the  
 #
-def calc_covariance(x, Eta):
+def calc_covariance(Eta):
     print("Calculate covariance:")
-    print("x: ", np.shape(x))
     print("E: ", np.shape(Eta))
 
-    K = np.shape(Eta)[0]      # set K to iterate through each of the nearest neighbors
-    C = np.zeros([K,K])     # set C as the KxK covariance matrix
-    print("K: ", K)
+    #K = np.shape(Eta)[0]      # set K to iterate through each of the nearest neighbors
+    #C = np.zeros([K,K])     # set C as the KxK covariance matrix
+    #print("K: ", K)
     
     #Et = Eta.T
     #print("E[1]: \n", E[1], "\n")
     # center the data
-    for k in range(0, K-1):
-        Eta[k] = x - Eta[k]
+    #for k in range(0, K-1):
+    #    Eta[k] = x - Eta[k]
     
-    np.set_printoptions(threshold=sys.maxsize)
-    print(Eta)
-    print("Eta")
+    #np.set_printoptions(threshold=sys.maxsize)
+    #print(Eta)
+    #print("Eta")
     
-    print(Eta.T)
-    print("Eta.T")
+    #print(Eta.T)
+    #print("Eta.T")
     
     # Compute the local covariance matrix
     C = np.cov(Eta)
 
     print("Local covariance matrix C: ", np.shape(C))
-    print(C, "\n")
+    #print(C, "\n")
 
     return C
+
+# Clear non-neighbor weight entries from the weight vector
+#
+# Inputs:  nbrs --> the list of nearest neighbors
+#          wght --> the calculated weight vector
+# 
+# Outputs: wght --> the adjusted weight vector    
+#
+def clear_non_neighbors(nbrs, wght):
+    print("Clear non-nieghbors:")
+    print("wght: ", np.shape(wght), " - ", wght)
+    
+    # Create mask vector
+    dim = np.shape(wght)[0]
+    mask = np.ones(dim)                        # ones mean, discard the value
+    print("Mask: ", np.shape(mask), " - ", mask)
+
+    # Apply zeros to the nearest neighbors so we keep the weights
+    for i in range(0, np.shape(nbrs)[1]):
+        mask[nbrs[0,i]] = 0;
+        #print("nbr: ", nbrs[0,i])
+        
+    # mask off the non-neighbor weights
+    w = ma.masked_array(wght, mask)
+    print(w)
+    
+    return w
+    
+# Scale weight values for nearest neighbors
+#
+# Inputs:  nbrs --> the list of nearest neighbors
+#          wght --> the calculated weight vector
+# 
+# Outputs: wght --> the adjusted weight vector    
+#
+def scale_neighbors(nbrs, wght):
+    print("Scale neighbor weights:")
+    
+    sumw = np.sum(wght)
+    print("sum of weights: ", sumw)
+    
+    w = wght / sumw
+    print("sum of weights: ", np.sum(w))
+    
+    
+    return w
 
 
 # Determine the reconstruction weights for each X
@@ -87,14 +133,7 @@ def calc_covariance(x, Eta):
 # 
 # Outputs: W    --> the weight matrix
 #
-# Reconstruction errors measured by the cost function of the distances of every
-# Xj for an Xi with weights applied to Xj
-# Minimize the const function subject to two constraints:
-# 1. Each data point Xi is reconstructed from its nearest neighbors only 
-#    --> Wij = 0 if X Xj not in the set of nearest neighbors
-# 2. Rows of the weight matrix sum to one
-#
-def construct_weight_matrix(X, v, neighbors, k):
+def construct_weight_vector(X, v, neighbors, k):
     # Setup matrices and variables
     D = np.shape(X)[1]                              # get the dimension of X
     print("Construct weight matrix")
@@ -104,33 +143,32 @@ def construct_weight_matrix(X, v, neighbors, k):
     print("Image #", v, "(v)")
     print("Neighbors = ", neighbors)
 
-    # Build a matrix of the K nearest neighbors
-    n = neighbors[:,0]      # Set eta to the first nearest neighbor vector
-    Eta = X[n]
+    # Build a matrix of the nearest neighbors
+    # (this is all neighbors of the vector v, so remove all others from X)
+    Eta = np.delete(X, v, axis=0) 
     print("Eta: ", np.shape(Eta))
     
-    # iterate through the rest of neighbors and concatenate them into Eta
-    for i in range(1,k):      
-        n = neighbors[:,i]
-        Eta = np.row_stack((Eta, X[n]))
-        print(np.shape(Eta))
-    
-    # Compute local covariance matrix for the vector v in X
-    # and the Eta nearest neighbors
-    C = calc_covariance(X[v,:], Eta)
+    # Compute local covariance matrix for the vector v in X and all neighbors
+    C = calc_covariance(Eta)
 
     # Solve the linear system with constraint that rows of weights sum to one
     b = np.ones(np.shape(C)[1])  # build the constant vector
-    W = np.linalg.solve(C, b)    # compute solution
+    w = np.linalg.solve(C, b)    # compute solution
     
-    print("W: ", np.shape(W))
-    print(W)
+    # Apply first constraint to zero out non-neighbor weights
+    w = clear_non_neighbors(neighbors, w)
     
-    # Apply second constraint if j is not a neighbor, set Wij = 0
-    #for i in range(0, np.shape(X)[0]):
+    # Apply second constraint to scale valid neighbors
+    w = scale_neighbors(neighbors, w)
+    
+    print("w: ", np.shape(w))
+    print(w)
+    
+   
+    
         
 
-    return W
+    return w
 
 
 
@@ -162,7 +200,7 @@ def locally_linear_embedding(X, n_neighbors, n_components):
     
     v = 1
     dist, ind = tree.query(X[:v], k=n_neighbors)
-    W = construct_weight_matrix(X, v, ind, n_neighbors)
+    w = construct_weight_vector(X, v, ind, n_neighbors)
 
 
     
