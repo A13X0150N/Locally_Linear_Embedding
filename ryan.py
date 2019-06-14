@@ -9,7 +9,7 @@ from sklearn import manifold
 from sklearn import neighbors
 from sklearn import datasets
 import struct
-import sys
+
 
 # Parse data from zipped mnist files into numpy arrays
 # Modified from source: https://gist.github.com/tylerneylon/ce60e8a06e7506ac45788443f7269e40
@@ -42,6 +42,19 @@ def find_landmarks(Y, n, m):
     return idx
 
 
+# Compute the complete nearest neighbors array
+#
+# Inputs: X      --> training data
+#         n_nbrs --> the number of nearest neighbors to search for
+#         n_comp --> the number of components
+def compute_nearest_neighbors(X, n_nbrs, n_comp):
+    print("Computing nearest neighbors...")
+    tree = neighbors.BallTree(X, leaf_size=n_comp)
+    dist, ind = tree.query(X, k=n_nbrs)
+    print("Complete nearest neighbor index: ", np.shape(ind))
+    return dist, ind
+
+
 # Inputs: x --> the basis vector (784 x 1)
 #         E --> eta is the matrix of nearest neighbors (k x 784)
 # 
@@ -54,10 +67,15 @@ def calc_covariance(Eta):
     print("E: ", np.shape(Eta))
     
     # Compute the local covariance matrix
-    C = np.cov(Eta)
-
+    #C = np.cov(Eta)
+    C = mul(Eta.T, Eta)
     print("Local covariance matrix C: ", np.shape(C))
 
+    # Regularize the covariance matrix because otherwise it is singular
+    I = np.identity(np.shape(C)[0])
+    eps = .001 * np.trace(C)
+    C = C + eps * I
+    
     return C
 
 
@@ -70,14 +88,14 @@ def calc_covariance(Eta):
 #
 def clear_non_neighbors(nbrs, wght):
     print("Clear non-nieghbors:")
-    print("wght: ", np.shape(wght), " - ", wght)
+    print("wght: ", np.shape(wght))
     
     # Create mask vector
     dim = np.shape(wght)[0]
     mask = np.ones(dim)                        # ones mean, discard the value
-    print("Mask: ", np.shape(mask), " - ", mask)
+    print("Mask: ", np.shape(mask))
 
-    # Apply zeros to the nearest neighbors so we keep the weights
+    # Apply zeros to the nearest neighbors so sum of weights = 1
     dim_nbrs = np.shape(nbrs)[0]
     print("dim nbrs: ", dim_nbrs)
     for i in range(0, dim_nbrs):
@@ -104,6 +122,41 @@ def scale_neighbors(wght):
     return w
 
 
+# Build the matrix of nearest neighbors
+#
+#
+#
+def build_nbrs_matrix(X, nbrs):
+    print("Build nearest neighbors matrix...")
+    # Build a matrix of the nearest neighbors
+    nbrs = np.delete(nbrs, 0, axis=0)   # remove Xi
+    col = np.shape(X)[1]                # set number of rows for Eta
+    row = np.shape(nbrs)[0]             # set columns for Eta
+    Eta = np.zeros([row, col])
+    
+    # Get each row vector from X corresponding to the nearest neighbor
+    for r in range(0, row):
+        Eta[r,:] = X[nbrs[r]]
+        print("nbr ", nbrs[r])
+        
+    return Eta
+
+# Center the matrix
+#
+#
+#
+#
+def center_nbrs_matrix(x, Eta):
+    print("Center the neighbors matrix...")
+    c = np.shape(Eta)[0]
+    #int("c: ", c)
+    #print("x: ", x)
+    sub = np.tile(x, (c, 1))
+    #print("sub: ", np.shape(sub))
+    #print("Eta: ", np.shape(Eta))
+    eta = Eta - sub
+    return eta
+
 # Determine the reconstruction weights for each X
 #
 # Inputs:  X    --> Data Matrix
@@ -123,10 +176,11 @@ def construct_weight_vector(X, v, nbrs, k):
     print("Image #", v, "(v)")
     print("Neighbors = ", nbrs)
 
-    # Build a matrix of the nearest neighbors
-    # (this is all neighbors of the vector v, so remove all others from X)
-    Eta = np.delete(X, v, axis=0) 
-    #print("Eta: ", np.shape(Eta))
+    # Build the matrix of nearest neighbors
+    Eta = build_nbrs_matrix(X, nbrs)
+    
+    # Center the data
+    Eta = center_nbrs_matrix(X[v,:], Eta)
     
     # Compute local covariance matrix for the vector v in X and all neighbors
     C = calc_covariance(Eta)
@@ -165,12 +219,7 @@ def compute_embedding_components(W, d):
     print("Vt: ", np.shape(Vt))
 
 
-def compute_nearest_neighbors(X, n_neighbors, n_components):
-    print("Computing nearest neighbors...")
-    tree = neighbors.BallTree(X, leaf_size=n_components)
-    dist, ind = tree.query(X, k=n_neighbors)
-    print("ind: ", np.shape(ind))
-    return dist, ind
+
 
 # TODO - We only have to implement this function, swap it with the manifold one below
 # Seek a low-rank projection on an input matrix
@@ -187,10 +236,9 @@ def locally_linear_embedding(X, n_neighbors, n_components):
     # Step 1: Find the nearest neighbors at for each sample
     tree = neighbors.BallTree(X, leaf_size=n_components)
     dist, ind = tree.query(X[:1], k=n_neighbors)
-    # ind = indices of k=n_neighbors nearest neighbors
-    # (nearest neighbors are ranked in order)
-    # dist = distance k=n_neighbors nearest neighbors
-
+    
+    #dist, ind = compute_nearest_neighbors(X, n_neighbors, n_components)
+    
     # Step 2: Construct a weight matrix that recreates X from its neighbors
     n = np.shape(X)[0]
     d = np.shape(X)[1]
@@ -201,10 +249,6 @@ def locally_linear_embedding(X, n_neighbors, n_components):
 
     # Loop through each image and construct its weight matrix 
     rows = np.shape(X)[0]
-
-    dist, ind = tree.query(X, k=n_neighbors)
-    print("ind: ", np.shape(ind))
-    
     for r in range(0, rows - 1):
         print("Row: ",r)
         print("ind: ", ind[r,:])
@@ -217,6 +261,9 @@ def locally_linear_embedding(X, n_neighbors, n_components):
     Y = X[:,0:2]   # placeholder
     err = 0.001    # placeholder
     return Y, err
+
+
+
 
 # MAIN
 # -------------------------------------------------------------------------------------------
