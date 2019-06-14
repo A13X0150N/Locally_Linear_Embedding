@@ -64,7 +64,7 @@ def compute_nearest_neighbors(X, n_nbrs, n_comp):
 # Iterate theough the nearest neighbors and compute the  
 #
 def calc_covariance(Eta):
-    print("Calculate covariance:")
+    #print("Calculate covariance:")
     #print("Eta: ", np.shape(Eta))
     
     # Compute the local covariance matrix
@@ -81,37 +81,6 @@ def calc_covariance(Eta):
 
 
 #------------------------------------------------------------------------------
-# Clear non-neighbor weight entries from the weight vector
-#
-# Inputs:  nbrs --> the list of nearest neighbors
-#          wght --> the calculated weight vector
-# 
-# Outputs: wght --> the adjusted weight vector    
-#
-def clear_non_neighbors(nbrs, wght):
-    print("Clear non-nieghbors:")
-    print("wght: ", np.shape(wght))
-    
-    # Create mask vector
-    dim = np.shape(wght)[0]
-    mask = np.ones(dim)                        # ones mean, discard the value
-    print("Mask: ", np.shape(mask))
-
-    # Apply zeros to the nearest neighbors so sum of weights = 1
-    dim_nbrs = np.shape(nbrs)[0]
-    print("dim nbrs: ", dim_nbrs)
-    for i in range(0, dim_nbrs):
-        mask[nbrs[i]] = 0;
-        #print("nbr: ", nbrs[0,i])
-        
-    # mask off the non-neighbor weights
-    w = ma.masked_array(wght, mask)
-    print(w)
-    
-    return w
-    
-
-#------------------------------------------------------------------------------
 # Scale weight values for nearest neighbors
 #
 # Inputs:  wght --> the wight vector with non-neighbors blanked out
@@ -121,7 +90,7 @@ def clear_non_neighbors(nbrs, wght):
 def scale_neighbors(wght):
     sumw = np.sum(wght)
     w = wght / sumw
-    print("Sum of weights: ", np.sum(w))
+    #print("Sum of weights: ", np.sum(w))
     return w
 
 
@@ -137,10 +106,10 @@ def scale_neighbors(wght):
 # vectors together in a nearest neighbor matrix
 #
 def build_nbrs_matrix(X, nbrs, k):
-    print("Build nearest neighbors matrix...")
+    #print("Build nearest neighbors matrix...")
     # Build a matrix of the nearest neighbors
     nbrs = np.delete(nbrs, 0, axis=0)   # remove Xi
-    print("nbrs: ", np.shape(nbrs))
+    #print("nbrs: ", np.shape(nbrs))
     
     D = np.shape(X)[1]                # set number of rows for Eta
     N = np.shape(nbrs)[1]         # set columns for Eta. Subtract 1 because index from ball tree includes the vector itself
@@ -167,7 +136,7 @@ def build_nbrs_matrix(X, nbrs, k):
 #
 #
 def center_nbrs_matrix(x, Eta):
-    print("Center the neighbors matrix...")
+    #print("Center the neighbors matrix...")
     n = np.shape(Eta)[1]
     d = np.shape(x)[0]
     #print("n: ", n)
@@ -192,7 +161,7 @@ def center_nbrs_matrix(x, Eta):
 #
 def construct_weight_vector(X, i, nbrs, k):
     # Setup matrices and variables
-    print("Construct weight matrix")
+    #print("Construct weight matrix")
     #print("k = ", k)
     #print("Image #", i)
     #print("Neighbors = ", nbrs)
@@ -217,7 +186,7 @@ def construct_weight_vector(X, i, nbrs, k):
     w = scale_neighbors(w)
     
     #print("Weight vector constructed...  w: ", np.shape(w))
-    print("w = ", w)
+    #print("w = ", w)
     
     return w
 
@@ -232,7 +201,7 @@ def construct_weight_vector(X, i, nbrs, k):
 #
 def sum_weight_row(W, i, j):
     s = 0
-    for k in range(0, np.shape(W)[0]):
+    for k in range(0, np.shape(W)[0]):  # 0 - 10
         s = s + W[k,i] * W[k,j] 
     return s
 
@@ -244,26 +213,31 @@ def sum_weight_row(W, i, j):
 #
 #
 def compute_embedding_components(W, d):
-    print("Compute embedding components:")
+    #print("Compute embedding components:")
     #create sparse matrix M = (I-W)'*(I-W)
     
     # Create matrix M
     print("Create matrix M...")
+    d = np.shape(W)[0]
+    n = np.shape(W)[1]
+    #M = np.identity(n)
+    #M = np.zeros((d,n))
     M = np.zeros(np.shape(W))
-    d = np.shape(M)[0]
-    n = np.shape(M)[1]
-    
     print("d: ", d, " n: ", n)
-    
+    print("M: ", np.shape(M))
+
     for i in range(0, d):
         for j in range(0, n):
-            delta = 1 if i==j else 0
+            if i == j:
+                delta = 1
+            else:
+                delta = 0
             M[i,j] = delta - W[i,j] - W[i,j] + sum_weight_row(W, i, j)
-        print("M[",i,",",j,"] = ", M[i,j])        
-    
+        #print("M[",i,",",j,"] = ", M[i,j])        
+
 
     # 
-    U, S, Vt = np.linalg.svd(M)
+    U, S, Vt = np.linalg.svd(M.T)
     
     #print("U: ", np.shape(U))
     #print(U,"\n")
@@ -271,10 +245,12 @@ def compute_embedding_components(W, d):
     #print("Vt: ", np.shape(Vt))
     
     d = np.shape(U)[1]
-    E = U[:,d-3:d-1]
-    print("E: ", np.shape(E))
-    print(E)
-    return Y
+    Y = U[:,d-3:d-1].T
+    
+    print("Y: ", np.shape(Y))
+    print(Y)
+    
+    return Y.T
 
 
 #------------------------------------------------------------------------------
@@ -312,7 +288,7 @@ def locally_linear_embedding(X, n_neighbors, n_components):
 
     # Loop through each image and construct its weight matrix 
     for i in range(0, D):
-        print("Image: ",i)
+        #print("Image: ",i)
         w = construct_weight_vector(X, i, ind, n_neighbors)
         W[:,i] = w[:]
     
@@ -328,7 +304,7 @@ def locally_linear_embedding(X, n_neighbors, n_components):
 
 
 # MAIN
-# -------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 np.set_printoptions(precision=2, edgeitems=10)
 
 raw_train = read_idx("train-images-idx3-ubyte.gz")
@@ -341,7 +317,7 @@ X = train_data[train_label == 8]
 # Test by using scikit class
 #Y, err = manifold.locally_linear_embedding(X, n_neighbors=10, n_components=2)
 
-# Verify by using our custom class 
+# Verify by using our custom method
 Y, err = locally_linear_embedding(X, n_neighbors=10, n_components=2)
 
 print("Y: ", np.shape(Y))
