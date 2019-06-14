@@ -55,6 +55,7 @@ def compute_nearest_neighbors(X, n_nbrs, n_comp):
     return dist, ind
 
 
+#------------------------------------------------------------------------------
 # Inputs: x --> the basis vector (784 x 1)
 #         E --> eta is the matrix of nearest neighbors (k x 784)
 # 
@@ -64,12 +65,12 @@ def compute_nearest_neighbors(X, n_nbrs, n_comp):
 #
 def calc_covariance(Eta):
     print("Calculate covariance:")
-    print("E: ", np.shape(Eta))
+    #print("Eta: ", np.shape(Eta))
     
     # Compute the local covariance matrix
     #C = np.cov(Eta)
     C = mul(Eta.T, Eta)
-    print("Local covariance matrix C: ", np.shape(C))
+    #print("Local covariance matrix C: ", np.shape(C))
 
     # Regularize the covariance matrix because otherwise it is singular
     I = np.identity(np.shape(C)[0])
@@ -79,6 +80,7 @@ def calc_covariance(Eta):
     return C
 
 
+#------------------------------------------------------------------------------
 # Clear non-neighbor weight entries from the weight vector
 #
 # Inputs:  nbrs --> the list of nearest neighbors
@@ -109,6 +111,7 @@ def clear_non_neighbors(nbrs, wght):
     return w
     
 
+#------------------------------------------------------------------------------
 # Scale weight values for nearest neighbors
 #
 # Inputs:  wght --> the wight vector with non-neighbors blanked out
@@ -118,29 +121,46 @@ def clear_non_neighbors(nbrs, wght):
 def scale_neighbors(wght):
     sumw = np.sum(wght)
     w = wght / sumw
-
+    print("Sum of weights: ", np.sum(w))
     return w
 
 
+#------------------------------------------------------------------------------
 # Build the matrix of nearest neighbors
+# 
+# Inputs: X    --> the source data matrix X to get the neighbors from
+#         nbrs --> the list of neighbor indices
 #
+# Outputs: Eta --> the nearest neighbor matrix for Xi
 #
+# Use the neighbors list to get the corresponding vector from X and put the 
+# vectors together in a nearest neighbor matrix
 #
-def build_nbrs_matrix(X, nbrs):
+def build_nbrs_matrix(X, nbrs, k):
     print("Build nearest neighbors matrix...")
     # Build a matrix of the nearest neighbors
     nbrs = np.delete(nbrs, 0, axis=0)   # remove Xi
-    col = np.shape(X)[1]                # set number of rows for Eta
-    row = np.shape(nbrs)[0]             # set columns for Eta
-    Eta = np.zeros([row, col])
+    print("nbrs: ", np.shape(nbrs))
+    
+    D = np.shape(X)[1]                # set number of rows for Eta
+    N = np.shape(nbrs)[1]         # set columns for Eta. Subtract 1 because index from ball tree includes the vector itself
+    Eta = np.zeros([D, k])
+    
+    #print("D: ", D, " N: ", N)
+    #print("Eta: ", np.shape(Eta))
     
     # Get each row vector from X corresponding to the nearest neighbor
-    for r in range(0, row):
-        Eta[r,:] = X[nbrs[r]]
-        print("nbr ", nbrs[r])
+    for n in range(1, N):
+        Eta[:,n-1] = X[nbrs[0][n]]
+        #print("nbr ", nbrs[0][n])
         
+        
+    #print("Eta: ", np.shape(Eta))    
+    #print(Eta)
     return Eta
 
+
+#------------------------------------------------------------------------------
 # Center the matrix
 #
 #
@@ -148,39 +168,40 @@ def build_nbrs_matrix(X, nbrs):
 #
 def center_nbrs_matrix(x, Eta):
     print("Center the neighbors matrix...")
-    c = np.shape(Eta)[0]
-    #int("c: ", c)
-    #print("x: ", x)
-    sub = np.tile(x, (c, 1))
+    n = np.shape(Eta)[1]
+    d = np.shape(x)[0]
+    #print("n: ", n)
+    #print("d: ", d)
+    #print("x: ", np.shape(x)) 
+    sub = np.tile(x, (n,1))
     #print("sub: ", np.shape(sub))
     #print("Eta: ", np.shape(Eta))
-    eta = Eta - sub
+    eta = Eta - sub.T
     return eta
 
+
+#------------------------------------------------------------------------------
 # Determine the reconstruction weights for each X
 #
 # Inputs:  X    --> Data Matrix
-#          v    --> Index into the data matrix for the vector we want to construct weights for
+#          i    --> Index for vector xi we want to construct weights for
 #          tree --> nearest neighbors tree
 #          k    --> number of nearest neighbors  
 # 
 # Outputs: W    --> the weight matrix
 #
-def construct_weight_vector(X, v, nbrs, k):
+def construct_weight_vector(X, i, nbrs, k):
     # Setup matrices and variables
-    D = np.shape(X)[1]                              # get the dimension of X
     print("Construct weight matrix")
-    print("X = ", np.shape(X))
-    print("D = ", D)
-    print("k = ", k)
-    print("Image #", v, "(v)")
-    print("Neighbors = ", nbrs)
+    #print("k = ", k)
+    #print("Image #", i)
+    #print("Neighbors = ", nbrs)
 
     # Build the matrix of nearest neighbors
-    Eta = build_nbrs_matrix(X, nbrs)
+    Eta = build_nbrs_matrix(X, nbrs, k)
     
     # Center the data
-    Eta = center_nbrs_matrix(X[v,:], Eta)
+    Eta = center_nbrs_matrix(X[i,:], Eta)
     
     # Compute local covariance matrix for the vector v in X and all neighbors
     C = calc_covariance(Eta)
@@ -190,37 +211,73 @@ def construct_weight_vector(X, v, nbrs, k):
     w = np.linalg.solve(C, b)    # compute solution
     
     # Apply first constraint to zero out non-neighbor weights
-    w = clear_non_neighbors(nbrs, w)
+    #w = clear_non_neighbors(nbrs, w)
     
     # Apply second constraint to scale valid neighbors
     w = scale_neighbors(w)
     
-    print("w: ", np.shape(w))
-    #print(w)
+    #print("Weight vector constructed...  w: ", np.shape(w))
+    print("w = ", w)
     
     return w
 
+#------------------------------------------------------------------------------
+# Calculate the sum of elements in a weight row for matrix M
+#
+# Inputs:   W
+#             
+#
+#
+#
+#
+def sum_weight_row(W, i, j):
+    s = 0
+    for k in range(0, np.shape(W)[0]):
+        s = s + W[k,i] * W[k,j] 
+    return s
 
-#find bottom d+1 eigenvectors of M
-#  (corresponding to the d+1 smallest eigenvalues) 
-#set the qth ROW of Y to be the q+1 smallest eigenvector
-#  (discard the bottom eigenvector [1,1,1,1...] with eigenvalue zero)
+
+#------------------------------------------------------------------------------
+#
+#
+#
+#
+#
 def compute_embedding_components(W, d):
     print("Compute embedding components:")
     #create sparse matrix M = (I-W)'*(I-W)
-    I = np.identity(np.shape(W)[0])
-    M = mul((I - W).T, (I - W))
+    
+    # Create matrix M
+    print("Create matrix M...")
+    M = np.zeros(np.shape(W))
+    d = np.shape(M)[0]
+    n = np.shape(M)[1]
+    
+    print("d: ", d, " n: ", n)
+    
+    for i in range(0, d):
+        for j in range(0, n):
+            delta = 1 if i==j else 0
+            M[i,j] = delta - W[i,j] - W[i,j] + sum_weight_row(W, i, j)
+        print("M[",i,",",j,"] = ", M[i,j])        
+    
 
-    # Find the bottom d + 1 eigenvectors
+    # 
     U, S, Vt = np.linalg.svd(M)
     
-    print("U: ", np.shape(U))
-    print("S: ", np.shape(S))
-    print("Vt: ", np.shape(Vt))
+    #print("U: ", np.shape(U))
+    #print(U,"\n")
+    #print("S: ", np.shape(S))
+    #print("Vt: ", np.shape(Vt))
+    
+    d = np.shape(U)[1]
+    E = U[:,d-3:d-1]
+    print("E: ", np.shape(E))
+    print(E)
+    return Y
 
 
-
-
+#------------------------------------------------------------------------------
 # TODO - We only have to implement this function, swap it with the manifold one below
 # Seek a low-rank projection on an input matrix
 #
@@ -234,31 +291,36 @@ def compute_embedding_components(W, d):
 def locally_linear_embedding(X, n_neighbors, n_components):
     
     # Step 1: Find the nearest neighbors at for each sample
-    tree = neighbors.BallTree(X, leaf_size=n_components)
-    dist, ind = tree.query(X[:1], k=n_neighbors)
     
-    #dist, ind = compute_nearest_neighbors(X, n_neighbors, n_components)
+    # Testing
+    #tree = neighbors.BallTree(X, leaf_size=n_components)
+    #dist, ind = tree.query(X[:1], k=n_neighbors)
+    #print("ind: ", ind)
     
-    # Step 2: Construct a weight matrix that recreates X from its neighbors
-    n = np.shape(X)[0]
-    d = np.shape(X)[1]
-    print("n: ", n)
-    print("d: ", d)
-    W = np.zeros([n,n-1])
-    print("Weight matrix: ", np.shape(W))
+    # Primetime
+    #n_neighbors = n_neighbors + 1
+    dist, ind = compute_nearest_neighbors(X, n_neighbors + 1, n_components)
+    
+    # Step 2: Construct the weight matrix
+    D = np.shape(X)[0]
+    N = np.shape(X)[1]
+    W = np.zeros((n_neighbors, D))  # subtract 1 from D because nearest neighbor returns the vector itself
+    
+    print("X: ", np.shape(X))
+    print("N: ", N, " D: ", D)
+    print("W: ", np.shape(W))
 
     # Loop through each image and construct its weight matrix 
-    rows = np.shape(X)[0]
-    for r in range(0, rows - 1):
-        print("Row: ",r)
-        print("ind: ", ind[r,:])
-        w = construct_weight_vector(X, r, ind[r,:], n_neighbors)
-        W[r,:] = w[:]
+    for i in range(0, D):
+        print("Image: ",i)
+        w = construct_weight_vector(X, i, ind, n_neighbors)
+        W[:,i] = w[:]
     
     # Step 3: Compute vectors that are reconstructed by weights
     Y = compute_embedding_components(W, 2)
     
-    Y = X[:,0:2]   # placeholder
+    # Calculate the error
+    
     err = 0.001    # placeholder
     return Y, err
 
@@ -267,12 +329,7 @@ def locally_linear_embedding(X, n_neighbors, n_components):
 
 # MAIN
 # -------------------------------------------------------------------------------------------
-    
-a = np.array([[1,2,3,4,5,6],[4,5,6,7,8,9]])
-b = np.ones(np.shape(a)[1])
-
-a[0,:] = b[:]
-
+np.set_printoptions(precision=2, edgeitems=10)
 
 raw_train = read_idx("train-images-idx3-ubyte.gz")
 train_data = np.reshape(raw_train, (60000, 28*28))
@@ -280,8 +337,16 @@ train_label = read_idx("train-labels-idx1-ubyte.gz")
 
 # Train algorithm and calculate landmark graph
 X = train_data[train_label == 8]
+
+# Test by using scikit class
 #Y, err = manifold.locally_linear_embedding(X, n_neighbors=10, n_components=2)
+
+# Verify by using our custom class 
 Y, err = locally_linear_embedding(X, n_neighbors=10, n_components=2)
+
+print("Y: ", np.shape(Y))
+
+# Find landmarks
 landmarks = find_landmarks(Y, 5, 5)
 
 # Plot the clustered data with landmarks overlaid
