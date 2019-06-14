@@ -60,6 +60,7 @@ def calc_covariance(Eta):
 
     return C
 
+
 # Clear non-neighbor weight entries from the weight vector
 #
 # Inputs:  nbrs --> the list of nearest neighbors
@@ -77,8 +78,10 @@ def clear_non_neighbors(nbrs, wght):
     print("Mask: ", np.shape(mask), " - ", mask)
 
     # Apply zeros to the nearest neighbors so we keep the weights
-    for i in range(0, np.shape(nbrs)[1]):
-        mask[nbrs[0,i]] = 0;
+    dim_nbrs = np.shape(nbrs)[0]
+    print("dim nbrs: ", dim_nbrs)
+    for i in range(0, dim_nbrs):
+        mask[nbrs[i]] = 0;
         #print("nbr: ", nbrs[0,i])
         
     # mask off the non-neighbor weights
@@ -87,22 +90,17 @@ def clear_non_neighbors(nbrs, wght):
     
     return w
     
+
 # Scale weight values for nearest neighbors
 #
-# Inputs:  nbrs --> the list of nearest neighbors
-#          wght --> the calculated weight vector
+# Inputs:  wght --> the wight vector with non-neighbors blanked out
 # 
-# Outputs: wght --> the adjusted weight vector    
+# Outputs: w    --> the adjusted weight vector    
 #
-def scale_neighbors(nbrs, wght):
-    print("Scale neighbor weights:")
-    
+def scale_neighbors(wght):
     sumw = np.sum(wght)
-    print("sum of weights: ", sumw)
-    
     w = wght / sumw
-    print("sum of weights: ", np.sum(w))
-    
+
     return w
 
 
@@ -115,7 +113,7 @@ def scale_neighbors(nbrs, wght):
 # 
 # Outputs: W    --> the weight matrix
 #
-def construct_weight_vector(X, v, neighbors, k):
+def construct_weight_vector(X, v, nbrs, k):
     # Setup matrices and variables
     D = np.shape(X)[1]                              # get the dimension of X
     print("Construct weight matrix")
@@ -123,12 +121,12 @@ def construct_weight_vector(X, v, neighbors, k):
     print("D = ", D)
     print("k = ", k)
     print("Image #", v, "(v)")
-    print("Neighbors = ", neighbors)
+    print("Neighbors = ", nbrs)
 
     # Build a matrix of the nearest neighbors
     # (this is all neighbors of the vector v, so remove all others from X)
     Eta = np.delete(X, v, axis=0) 
-    print("Eta: ", np.shape(Eta))
+    #print("Eta: ", np.shape(Eta))
     
     # Compute local covariance matrix for the vector v in X and all neighbors
     C = calc_covariance(Eta)
@@ -138,13 +136,13 @@ def construct_weight_vector(X, v, neighbors, k):
     w = np.linalg.solve(C, b)    # compute solution
     
     # Apply first constraint to zero out non-neighbor weights
-    w = clear_non_neighbors(neighbors, w)
+    w = clear_non_neighbors(nbrs, w)
     
     # Apply second constraint to scale valid neighbors
-    w = scale_neighbors(neighbors, w)
+    w = scale_neighbors(w)
     
     print("w: ", np.shape(w))
-    print(w)
+    #print(w)
     
     return w
 
@@ -166,6 +164,14 @@ def compute_embedding_components(W, d):
     print("S: ", np.shape(S))
     print("Vt: ", np.shape(Vt))
 
+
+def compute_nearest_neighbors(X, n_neighbors, n_components):
+    print("Computing nearest neighbors...")
+    tree = neighbors.BallTree(X, leaf_size=n_components)
+    dist, ind = tree.query(X, k=n_neighbors)
+    print("ind: ", np.shape(ind))
+    return dist, ind
+
 # TODO - We only have to implement this function, swap it with the manifold one below
 # Seek a low-rank projection on an input matrix
 #
@@ -186,23 +192,39 @@ def locally_linear_embedding(X, n_neighbors, n_components):
     # dist = distance k=n_neighbors nearest neighbors
 
     # Step 2: Construct a weight matrix that recreates X from its neighbors
+    n = np.shape(X)[0]
+    d = np.shape(X)[1]
+    print("n: ", n)
+    print("d: ", d)
+    W = np.zeros([n,n-1])
+    print("Weight matrix: ", np.shape(W))
+
     # Loop through each image and construct its weight matrix 
-    W = np.zeros(np.shape(X))
+    rows = np.shape(X)[0]
+
+    dist, ind = tree.query(X, k=n_neighbors)
+    print("ind: ", np.shape(ind))
     
-    # cycle through each Xi and compute Wi
-    for x in range(0, np.shape(X)[0] - 1)
-        dist, ind = tree.query(X[:v], k=n_neighbors)
-        w = construct_weight_vector(X, v, ind, n_neighbors)
-        
-        
+    for r in range(0, rows - 1):
+        print("Row: ",r)
+        print("ind: ", ind[r,:])
+        w = construct_weight_vector(X, r, ind[r,:], n_neighbors)
+        W[r,:] = w[:]
+    
     # Step 3: Compute vectors that are reconstructed by weights
-    V = compute_embedding_components(W, 2)
+    Y = compute_embedding_components(W, 2)
     
     Y = X[:,0:2]   # placeholder
     err = 0.001    # placeholder
     return Y, err
 
+# MAIN
+# -------------------------------------------------------------------------------------------
+    
+a = np.array([[1,2,3,4,5,6],[4,5,6,7,8,9]])
+b = np.ones(np.shape(a)[1])
 
+a[0,:] = b[:]
 
 
 raw_train = read_idx("train-images-idx3-ubyte.gz")
