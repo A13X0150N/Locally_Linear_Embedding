@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 #matplotlib inline
 import numpy as np
 import numpy.ma as ma
+from numpy import matmul as mul
 import scipy as sp
 from sklearn import manifold
 from sklearn import neighbors
@@ -51,29 +52,11 @@ def find_landmarks(Y, n, m):
 def calc_covariance(Eta):
     print("Calculate covariance:")
     print("E: ", np.shape(Eta))
-
-    #K = np.shape(Eta)[0]      # set K to iterate through each of the nearest neighbors
-    #C = np.zeros([K,K])     # set C as the KxK covariance matrix
-    #print("K: ", K)
-    
-    #Et = Eta.T
-    #print("E[1]: \n", E[1], "\n")
-    # center the data
-    #for k in range(0, K-1):
-    #    Eta[k] = x - Eta[k]
-    
-    #np.set_printoptions(threshold=sys.maxsize)
-    #print(Eta)
-    #print("Eta")
-    
-    #print(Eta.T)
-    #print("Eta.T")
     
     # Compute the local covariance matrix
     C = np.cov(Eta)
 
     print("Local covariance matrix C: ", np.shape(C))
-    #print(C, "\n")
 
     return C
 
@@ -120,7 +103,6 @@ def scale_neighbors(nbrs, wght):
     w = wght / sumw
     print("sum of weights: ", np.sum(w))
     
-    
     return w
 
 
@@ -164,14 +146,25 @@ def construct_weight_vector(X, v, neighbors, k):
     print("w: ", np.shape(w))
     print(w)
     
-   
-    
-        
-
     return w
 
 
+#find bottom d+1 eigenvectors of M
+#  (corresponding to the d+1 smallest eigenvalues) 
+#set the qth ROW of Y to be the q+1 smallest eigenvector
+#  (discard the bottom eigenvector [1,1,1,1...] with eigenvalue zero)
+def compute_embedding_components(W, d):
+    print("Compute embedding components:")
+    #create sparse matrix M = (I-W)'*(I-W)
+    I = np.identity(np.shape(W)[0])
+    M = mul((I - W).T, (I - W))
 
+    # Find the bottom d + 1 eigenvectors
+    U, S, Vt = np.linalg.svd(M)
+    
+    print("U: ", np.shape(U))
+    print("S: ", np.shape(S))
+    print("Vt: ", np.shape(Vt))
 
 # TODO - We only have to implement this function, swap it with the manifold one below
 # Seek a low-rank projection on an input matrix
@@ -195,17 +188,15 @@ def locally_linear_embedding(X, n_neighbors, n_components):
     # Step 2: Construct a weight matrix that recreates X from its neighbors
     # Loop through each image and construct its weight matrix 
     W = np.zeros(np.shape(X))
-    #for v in range(0, np.shape(X)[0] - 1)
     
-    
-    v = 1
-    dist, ind = tree.query(X[:v], k=n_neighbors)
-    w = construct_weight_vector(X, v, ind, n_neighbors)
-
-
-    
+    # cycle through each Xi and compute Wi
+    for x in range(0, np.shape(X)[0] - 1)
+        dist, ind = tree.query(X[:v], k=n_neighbors)
+        w = construct_weight_vector(X, v, ind, n_neighbors)
+        
+        
     # Step 3: Compute vectors that are reconstructed by weights
-    
+    V = compute_embedding_components(W, 2)
     
     Y = X[:,0:2]   # placeholder
     err = 0.001    # placeholder
